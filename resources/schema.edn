@@ -1,0 +1,64 @@
+
+;; # SCHEMA!
+
+;; We'll be using conformity (https://github.com/rkneufeld/conformity) to define "norms" about
+;; what we expect to see in the shape of the database.
+
+{;; ## Catalysis Domain model
+ :catalysis/base-schema
+ ;; This is how conformity does dependencies (:requires)
+ {:requires [:dat.view/base-schema]
+  :txes
+  ;; Hmmm... should we have our own partition for datview?
+  [;; ### Domain types;
+   ;; It's recommended that you put as much of your logic about how types are supposed to related to eachother in the actual Datomic schema.
+   [{:db/id #db/id[:db.part/user]
+     :db/ident :e.type/Todo      ;; Types are idents; Currently we refer to type by keyword; needs to change
+     :e/type :e.type/Type        ;; Installs this entity as a type
+     :e.type/attributes [:e/name :e/description :e/tags :e/category]
+     :e.type/isa :e.type/Entity} ;; not strictly necessary, but let's us talk about all entities as instances of :e.type/Entity
+    ;; Time entries
+    {:db/id #db/id[:db.part/user]
+     :e/name "Time Entry"
+     :db/ident :e.type/TimeEntry
+     :e/type :e.type/Type
+     :e.type/attributes [:e/name :e/description]
+     :e.type/isa :e.type/Entity}]
+   ;;
+   ;; Domain model attributes
+   [{:db/id          #db/id[:db.part/db]
+     :db/ident       :todo/subtasks
+     :db/valueType   :db.type/ref
+     :db/isComponent true
+     :db/cardinality :db.cardinality/many
+     :e.type/_attributes :e.type/Todo
+     :attribute.ref/types [:e.type/Todo]
+     :db/doc         "Reference to a task's subtasks"
+     :db.install/_attribute :db.part/db}
+    {:db/id          #db/id[:db.part/db]
+     :db/ident       :todo/time-entries
+     :db/valueType   :db.type/ref
+     :db/isComponent true
+     :db/cardinality :db.cardinality/many
+     :e.type/_attributes :e.type/Todo
+     :attribute.ref/types [:e.type/TimeEntry]
+     :db/doc         "Reference to a tasks time entry"
+     :db.install/_attribute :db.part/db}
+    ;; Time entry attributes
+    ;[:db/add :e.type/TimeEntry :e.type/attributes :e/name]
+    ;[:db/add :e.type/TimeEntry :e.type/attributes :e/description]
+    {:db/id          #db/id[:db.part/db]
+     :db/ident       :time.entry/start-time
+     :db/valueType   :db.type/instant
+     :db/cardinality :db.cardinality/one
+     :e.type/_attributes :e.type/TimeEntry
+     :db/doc         "Start time for some time entry"
+     :db.install/_attribute :db.part/db}
+    {:db/id          #db/id[:db.part/db]
+     :db/ident       :time.entry/stop-time
+     :db/valueType   :db.type/instant
+     :db/cardinality :db.cardinality/one
+     :e.type/_attributes :e.type/TimeEntry
+     :db/doc         "Stop time for some time entry"
+     :db.install/_attribute :db.part/db}]]}}
+
