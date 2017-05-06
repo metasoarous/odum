@@ -1,7 +1,8 @@
 
 # odum
 
-Welcome to your new Datsys application!
+This is a tool for designing and analyzing Odum Diagrams (or graphs/networks).
+See <https://en.wikipedia.org/wiki/Howard_T._Odum>.
 
 ## Usage
 
