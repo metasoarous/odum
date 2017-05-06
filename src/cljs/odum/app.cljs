@@ -74,19 +74,40 @@
             new-y (- y (.-top bcr))]
         (d/transact! db/conn [{:db/id node-id :odum.node/x new-x :odum.node/y new-y}])))))
 
+;; A component for editing the attributes of a node
+
+(defn edit-node-view
+  [node-id]
+  (let [{:as node-data :keys [odum.node/name odum.node/energy]}
+        @(posh/pull db/conn '[*] node-id)]
+    [:div
+     ;; We'll use re-com for the inputs, cause they're awesome
+     [re-com/input-text
+      :model name
+      :on-change (fn [new-name] (d/transact! db/conn [{:db/id node-id :odum.node/name new-name}]))] 
+     [re-com/input-text
+      :model (str energy)
+      :on-change (fn [new-val] (d/transact! db/conn [{:db/id node-id :odum.node/energy (js/parseFloat new-val)}]))]]))
+    
 ;; Here's our final node view, which ties together the more generic dragable point and applies it towards our
-;; SVG viz
+;; SVG viz, as well as sets up an editable context for edit-node-view
 
 (defn node-view
   [svg-node node-id]
-  (let [{:as node-data :keys [odum.node/x odum.node/y odum.node/name]}
-        @(posh/pull db/conn '[*] node-id)]
-    [:g
-     [point {:on-drag (move-node svg-node node-id)} [x y]]
-     [:g
-      [:input {}]]
-     [:text {:x (- x 5) :y (+ y 30)} name]])) 
-
+  (let [edit-toggle (r/atom false)]
+    (fn [svg-node node-id]
+      (let [{:as node-data :keys [odum.node/x odum.node/y odum.node/name odum/editable?]}
+            @(posh/pull db/conn '[*] node-id)]
+        [:g
+         [point {:on-drag (move-node svg-node node-id)} [x y]]
+         [:text {:x x :y (+ y 30) :on-click #(swap! edit-toggle not)} name]
+         (when @edit-toggle
+           ;; Since we're in SVG, if we want regular HTML nodes, we need to nest them in a foreignObject node
+           [:foreignObject
+            {:x (+ x 20) :y (+ y 60) :height 200 :width 300}
+            [:div
+             [edit-node-view node-id]]])]))))
+             
 
 ;; Here's a much simpler view of of a flow as a line between two nodes
 
@@ -111,12 +132,34 @@
      ^{:key node}
      [node-view (r/current-component) node])])
 
+
+;; A control bar view for creating new nodes
+
+(defn new-node
+  ([] (new-node {}))
+  ([settings]
+   (merge
+     {:odum.node/name "New node"
+      :odum.node/x 100
+      :odum.node/y 100
+      :e/type :odum/node
+      :odum.node/energy 100}
+     settings)))
+
+(defn controls
+  []
+  [:div
+   [:button
+    {:on-click (fn [_] (d/transact! db/conn [(new-node)]))}
+    "New node"]])
+
 ;; This is our top-level application view
 
 (defn app
   []
   [:div
    [:h1 "Odum"]
+   [controls]
    [diagram-view]])
 
 ;; Which we install below with reagent
