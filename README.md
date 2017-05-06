@@ -8,9 +8,16 @@ Welcome to your new Datsys application!
 Execute `lein repl` and when that finishes booting execute `(run)` from the REPL.
 You should get some data loading on the client when you hit <localhost:9030>.
 
-From here:
-* go to `checkouts/schema.edn` and `checkouts/test-data.edn` to start tinkering around with the data
-* go to `cljs/odum/views.cljs` to modify the views
-* go to `dev/user.clj` for a clj REPL scratch pad
+You should see some draggable nodes on an svg canvas.
+When you click on the text, it will bring down a little form for editing the information for a node.
+
+From there:
+* check out `src/cljc/odum/db.cljc`, which has the db schema and default database, as well as some energy flow
+  simultation.
+* then look at `src/cljs/odum/app.cljs`, which has the view code.
 * have fun!
+
+## Notes
+
+This app was built using various parts of [Datsys](https://github.com/metasoarous/datsys).
 
