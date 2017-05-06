@@ -1,103 +1,130 @@
 (ns odum.app
   (:require-macros [cljs.core.async.macros :refer [go-loop]]
                    [reagent.ratom :refer [reaction]])
-  (:require [dat.view]
-            [dat.reactor :as reactor]
-            [dat.remote]
-            [dat.remote.impl.sente :as sente]
-            ;; TODO Chacge over to new ns
-            [dat.sync.client :as dat.sync]
-            [odum.views :as views]
-            [odum.events]
+  (:require [odum.views :as views]
+            [odum.events :as events]
+            [odum.db :as db]
+            [odum.drag :as drag]
+            [goog.events :as gevents]
             [dat.reactor.dispatcher :as dispatcher]
             [datascript.core :as d]
             [taoensso.timbre :as log :include-macros true]
+            [re-com.core :as re-com]
             [reagent.core :as r]
-            [com.stuartsierra.component :as component]
-            [posh.core :as posh]))
-
-;; # The system & main function
-
-;; This is where everything actually ties together and starts.
-;; If you're interested in tweaking things at a system level, have a look at metasoarous/datspec
+            [posh.reagent :as posh])
+ (:import [goog.events EventType]))  
 
 
-;; ## The default system
+;; Set up posh on our application db connection.
+;; This sets up listeners so that we can use the `posh/q` and `posh/pull` functions below.
 
-(defn new-system []
-  (-> (component/system-map
-        :remote     (sente/new-sente-remote)
-        ;; This should eventually be optional/defaulted
-        :dispatcher (dispatcher/new-strictly-ordered-dispatcher)
-        :app        (component/using
-                      ;; Should also be able to specify your own conn here, though one will be created for you
-                      (dat.view/new-datview {:dat.view/main views/main})
-                      [:remote :dispatcher])
-        :reactor    (component/using
-                      (reactor/new-simple-reactor)
-                      [:remote :dispatcher :app])
-        :datsync    (component/using
-                      (dat.sync/new-datsync)
-                      [:remote :dispatcher]))))
+(defonce poshed?
+  (posh/posh! db/conn))
 
 
-;; ## Customizing things
+;; And what that lets us do is define "materialized views", or "live queries", that you can think of like
+;; excel spreadsheet cells, which update when the inputs change.
+;; But here, everything is based on queries off of the database.
+;; So... update database, these queries update automatically.
 
-;; That's all fine and dandy, but supposing we want to customize things?
-;; This is a more fleshed out example of the system components being strung together
+(def flows
+  (posh/q
+    '[:find [?f ...]
+      :where [?f :e/type :odum/flow]]
+    db/conn))
 
-;;     (defn new-system []
-;;       (-> (component/system-map
-;;             ;; Have to require dat.reactor.dispatchers for this:
-;;             :dispatcher (dispatchers/new-strictly-ordered-dispatcher)
-;;             :remote     (dat.sync/new-sente-remote)
-;;             :reactor    (component/using (dat.sync/new-datsync-reactor) [:remote :dispatcher])
-;;             :app        (component/using (dat.view/new-datview {:dat.view/main views/main} [:remote :reactor :dispatcher]))))
-
-;; If we don't specify :dispatcher or :remote, they get plugged in automatically by the datsync reactor, and
-;; get plugged into datview for use in its components as well.
-
-
-;; ## Stripping things down
-
-;; Oh... You're not using DatSync but still wanna use DatView?
-
-;; No problem.
-;; Just plug in your own reactor.
-;; As long as it satsfies the reactor protocols, everything should just work.
-;; As long as our abstractions aren't leaking for you...
-;; (Tell us if they do...)
-
-;; Here's a quick example of what some
-
-;;     (defn new-system []
-;;       (-> (component/system-map
-;;             :reactor    (reactor/new-simple-reactor)
-;;             :load-data  (component/using (your.ns/new-data-loader) [:reactor])
-;;             :app        (component/using (dat.view/new-datview {:dat.view/main views/main} [:reactor :load-data]))))
+(def nodes
+  (posh/q
+    '[:find [?e ...]
+      :where [?e :e/type :odum/node]]
+    db/conn))
 
 
-;; ## Dev system
+;; Now we're going to start defining our view functions
+;; We use the Reagent library, which let's us write functions that map domain data to HTML
+;; However, this mapping doesn't happen directly, but via an intermediate data representation of HTML called
+;; hiccup.
+;; Hiccup looks like this: `[:div [:h1 "A header"] [:p "A paragraph"]]`
+;; With reagent, we don't just have to use keywords for our tags (div, p, etc), we can use other view
+;; functions.
+;; This sets things up so that updates to the DOM are minimal and fast.
 
-;; Note that you could also put your own dev system here, or a cards system, so that you can share the
-;; important structure and swap in things like fighweel components, etc.
+;; The first thing we're going to do is set up a movable/draggable point representation of an odum node.
+
+(def point-defaults
+  {:stroke "black"
+   :stroke-width 2
+   :fill "grey"
+   :r 10})
+
+(defn point [{:keys [on-drag]} [x y]]
+  [:circle 
+   (merge point-defaults
+          {:on-mouse-down #(drag/dragging on-drag)
+           :cx x
+           :cy y})])
+
+;; Now for our move-node handler which will look at where we drag the node, and update the database
+;; accordingly
+
+(defn move-node [svg-root node-id]
+  (fn [x y]
+    (let [bcr (drag/get-bcr svg-root)]
+      (let [new-x (- x (.-left bcr))
+            new-y (- y (.-top bcr))]
+        (d/transact! db/conn [{:db/id node-id :odum.node/x new-x :odum.node/y new-y}])))))
+
+;; Here's our final node view, which ties together the more generic dragable point and applies it towards our
+;; SVG viz
+
+(defn node-view
+  [svg-node node-id]
+  (let [{:as node-data :keys [odum.node/x odum.node/y odum.node/name]}
+        @(posh/pull db/conn '[*] node-id)]
+    [:g
+     [point {:on-drag (move-node svg-node node-id)} [x y]]
+     [:g
+      [:input {}]]
+     [:text {:x (- x 5) :y (+ y 30)} name]])) 
 
 
-;; # Your apps main function
+;; Here's a much simpler view of of a flow as a line between two nodes
 
-;; Just start the component!
+(defn flow-view
+  [flow-id]
+  (let [{:as flow-data :keys [odum.flow/from odum.flow/to]}
+        @(posh/pull db/conn '[{:odum.flow/from [*] :odum.flow/to [*]}] flow-id)
+        {from-x :odum.node/x from-y :odum.node/y} from
+        {to-x :odum.node/x to-y :odum.node/y} to]
+    [:g
+     [:line {:x1 from-x :y1 from-y :x2 to-x :y2 to-y :style {:stroke "grey" :stroke-width 2}}]]))
 
-;; This is sort of terrible, should really be handling this state in the function and doing the interactive
-;; dev thing in a separate dev file. For now though...
-(defonce system
-  (do
-    (log/info "Creating and starting system")
-    (component/start (new-system))))
+;; And finally we wrap everything together in a single svg view
+
+(defn diagram-view
+  []
+  [:svg {:height "800" :width "1000"}
+   (for [flow @flows]
+     ^{:key flow}
+     [flow-view flow])
+   (for [node @nodes]
+     ^{:key node}
+     [node-view (r/current-component) node])])
+
+;; This is our top-level application view
+
+(defn app
+  []
+  [:div
+   [:h1 "Odum"]
+   [diagram-view]])
+
+;; Which we install below with reagent
 
 (defn ^:export main []
   (log/info "Running main function")
   (when-let [root (.getElementById js/document "app")]
-    (r/render-component [views/main (:app system)] root)))
+    (r/render-component [app] root)))
 
 
 (main)

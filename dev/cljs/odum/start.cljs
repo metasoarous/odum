@@ -5,10 +5,10 @@
 
 
 (defn on-js-reload []
-  (log/info "------ Figwheel Has Reloaded ------")
-  (do
-    ;;(app/main)
-    (view/dispatch! (:app app/system) [:figwheel/reload nil])))
+  (log/info "------ Figwheel Has Reloaded ------"))
+  ;(do
+    ;;;(app/main)
+    ;(view/dispatch! (:app app/system) [:figwheel/reload nil])))
 
 
 

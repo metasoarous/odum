@@ -1,6 +1,9 @@
 (ns odum.db
   (:require [datascript.core :as d]
-            [clojure.pprint :as pp]))
+            [taoensso.timbre :as log :include-macros true]
+            [clojure.pprint :as pp]
+            [posh.core :as posh]
+            [reagent.core :as r]))
 
 
 ;; Our schema
@@ -12,8 +15,6 @@
    {:db/type :db.type/ref}
    :person/parent
    {:db/type :db.type/ref}})
-
-(pp/pprint schema)
 
 ;; A predator prey model
 
@@ -27,14 +28,20 @@
     ;; Our nodes
     [{:db/id source-id
       :odum.node/name "Sun"
+      :odum.node/x 50
+      :odum.node/y 80
       :e/type :odum/node
       :odum.node/energy 1000}
      {:db/id prey-id
       :odum.node/name "Prey"
+      :odum.node/x 150
+      :odum.node/y 180
       :e/type :odum/node
       :odum.node/energy 10}
      {:db/id pred-id
       :odum.node/name "Predator"
+      :odum.node/x 550
+      :odum.node/y 280
       :e/type :odum/node
       :odum.node/energy 5}
      ;; Flows
@@ -51,11 +58,14 @@
       :odum.flow/to pred-id
       :odum.flow/rate 0.003}]))
 
-(def conn (d/create-conn schema)) 
 
-(take 10 @conn)
 
-(d/transact conn predator-prey-model)
+(defonce conn
+  (let [conn (d/create-conn schema)]
+    (d/transact conn predator-prey-model)
+    conn))
+
+;(d/transact conn predator-prey-model)))
 
 
 ;; Now we define a function for computing a single iteration update on an odum graph.
@@ -90,7 +100,6 @@
     '[:find [(pull ?f [*]) ...]
       :where [?f :e/type :odum/flow]]
     @conn))
-;(pp/pprint flows)
 
 (def nodes
   ;; We put the query results into a map keyed by the entity id, for easier access in odum-step
@@ -99,22 +108,26 @@
       '[:find ?e (pull ?e [*])
         :where [?e :e/type :odum/node]]
       @conn)))
-;(pp/pprint nodes)
 
 ;; Now we run the simulation using our odum step and our model data
 
-(pp/pprint
-  (take 10
-    ;; This map part just reformats the results to be easier to look at
-    (map
-      (fn [tick]
-        (into
-          {}
-          (map
-            (fn [[id {:as node :keys [odum.node/name odum.node/energy]}]]
-              [name energy])
-            tick)))
-      ;; Note that we use partial here, because flows stays constant
-      (iterate (partial odum-step flows) nodes))))
+(defn simulate
+  [flows nodes]
+  (map
+    (fn [tick]
+      (into
+        {}
+        (map
+          (fn [[id {:as node :keys [odum.node/name odum.node/energy]}]]
+            [name energy])
+          tick)))
+    ;; Note that we use partial here, because flows stays constant
+    (iterate (partial odum-step flows) nodes)))
+
+(comment
+  (pp/pprint
+    (take 10
+      (simulate flows nodes))))
+      ;; This map part just reformats the results to be easier to look at
 
 
