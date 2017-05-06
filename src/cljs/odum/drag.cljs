@@ -12,6 +12,8 @@
             [posh.reagent :as posh])
   (:import [goog.events EventType]))  
 
+;; This stuff was more or less ripped off from:
+;; https://github.com/reagent-project/reagent/blob/master/examples/geometry/src/geometry/core.cljs
 
 ;; This namespace provides some utilities for doing drag and drop (takes care of all the messy dom
 ;; manipulation and such).

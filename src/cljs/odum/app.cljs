@@ -110,6 +110,7 @@
              
 
 ;; Here's a much simpler view of of a flow as a line between two nodes
+;; Might want to do something like this for arrows: http://vanseodesign.com/web-design/svg-markers/
 
 (defn flow-view
   [flow-id]
