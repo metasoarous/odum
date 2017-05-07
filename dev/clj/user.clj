@@ -71,203 +71,208 @@
 ;; NOW FOR SOME datascripts!
 ;; =========================
 
+;; This stuff was some learning sketching on how Datalog works before we started focusing on actually building
+;; the app
+
 ;; First we start off with a schema, which describes our reference types
 
-(def schema
-  {:odum.flow/from
-   {:db/type :db.type/ref}
-   :odum.flow/to
-   {:db/type :db.type/ref}
-   :person/parent
-   {:db/type :db.type/ref}})
+(comment
 
-;; Print the schema
+  (def schema
+    {:odum.flow/from
+     {:db/type :db.type/ref}
+     :odum.flow/to
+     {:db/type :db.type/ref}
+     :person/parent
+     {:db/type :db.type/ref}})
 
-(pp/pprint schema)
+  ;; Print the schema
 
-;; Now we can actually create our database
+  (pp/pprint schema)
 
-(def conn (d/create-conn schema)) 
+  ;; Now we can actually create our database
 
-
-;; Now we're going to create a predator prey model using Clojure maps, which we'll transact into our
-;; DataScript database and RDF triples.
-
-(def predator-prey-model
-  (let [source-id (d/tempid :db/user)
-        prey-id (d/tempid :db/user)
-        pred-id (d/tempid :db/user)
-        flow-id (d/tempid :db/user)
-        pred-flow-id (d/tempid :db/user)
-        prey-flow-id (d/tempid :db/user)]
-    ;; Our nodes
-    [{:db/id source-id
-      :db/doc "The sun... probably"
-      :e/type :odum/node}
-     {:db/id prey-id
-      :db/doc "Some prey"
-      :e/type :odum/node}
-     {:db/id pred-id
-      :db/doc "Predator"
-      :e/type :odum/node}
-     ;; Flows
-     {:db/id prey-flow-id
-      :db/doc "Prey feeding off sun"
-      :e/type :odum/flow
-      :odum.flow/from source-id
-      :odum.flow/to prey-id}
-     {:db/id pred-flow-id
-      :db/doc "Prey feeding off sun"
-      :e/type :odum/flow
-      :odum.flow/from prey-id
-      :odum.flow/to pred-id}]))
-
-(pp/pprint predator-prey-model)
-
-;; Transact our predator prey model
-
-(d/transact conn predator-prey-model)
+  (def conn (d/create-conn schema)) 
 
 
-;; Pull queries; These let us pull out information about a particular entity, by id.
+  ;; Now we're going to create a predator prey model using Clojure maps, which we'll transact into our
+  ;; DataScript database and RDF triples.
 
-(d/pull @conn '[*] 1)
+  (def predator-prey-model
+    (let [source-id (d/tempid :db/user)
+          prey-id (d/tempid :db/user)
+          pred-id (d/tempid :db/user)
+          flow-id (d/tempid :db/user)
+          pred-flow-id (d/tempid :db/user)
+          prey-flow-id (d/tempid :db/user)]
+      ;; Our nodes
+      [{:db/id source-id
+        :db/doc "The sun... probably"
+        :e/type :odum/node}
+       {:db/id prey-id
+        :db/doc "Some prey"
+        :e/type :odum/node}
+       {:db/id pred-id
+        :db/doc "Predator"
+        :e/type :odum/node}
+       ;; Flows
+       {:db/id prey-flow-id
+        :db/doc "Prey feeding off sun"
+        :e/type :odum/flow
+        :odum.flow/from source-id
+        :odum.flow/to prey-id}
+       {:db/id pred-flow-id
+        :db/doc "Prey feeding off sun"
+        :e/type :odum/flow
+        :odum.flow/from prey-id
+        :odum.flow/to pred-id}]))
 
-(pp/pprint
-  (d/pull @conn '[*] 4))
+  (pp/pprint predator-prey-model)
 
+  ;; Transact our predator prey model
 
-;; Datalog queries with q; These let you query across relationships and do SQL style queries, but more
-;; powerful, easier to write, and with recursion.
-
-(pp/pprint
-  (d/q
-    '[:find [?e ...]
-      :where [?e :e/type :odum/flow]
-             [?e :odum.flow/from ?p]
-             [?p :db/doc "Some prey"]]
-    @conn))
-
-
-;; Here's some person and ancestor data we can play with
-
-(def ancestral-data
-  [{:db/id -999
-    :person/name "Bob Jones"}
-   {:db/id -998
-    :person/name "Sally Mae"
-    :person/parent -999}
-   {:db/id -997
-    :person/name "Freddie Mac"
-    :person/parent -998}
-   {:db/id -996
-    :person/name "Jill Stein"
-    :person/parent -998}
-   {:db/id -995
-    :person/name "Bo Willson"
-    :person/parent -996}])
-
-
-(d/transact conn ancestral-data)
-
-;; let's see all parent relationships by name
-
-(pp/pprint
-  (d/q
-    '[:find ?n1 ?n2
-      :in $ %
-      :where [?e1 :person/parent ?e2]
-             [?e1 :person/name ?n1]
-             [?e2 :person/name ?n2]]
-    @conn))
-
-;; Now we're going to define some rules; These let us describe "or", and do recursion.
-
-(def rules
-  '[;; Ancestor
-    [(ancestor ?e1 ?e2)
-     [?e1 :person/parent ?e2]]
-     ;; Or an ancestor of a parent
-    [(ancestor ?e1 ?e2)
-     [?e1 :person/parent ?p]
-     [ancestor ?p ?e2]]
-    ;; Odum flows
-    [(flows-to ?e1 ?e2)
-     [?f :odum.flow/from ?e1]
-     [?f :odum.flow/to ?e2]]
-    [(flows-to ?e1 ?e2)
-     [?f :odum.flow/from ?e1]
-     [?f :odum.flow/to ?n]
-     (flows-to ?n ?e2)]])
+  (d/transact conn predator-prey-model)
 
 
-;; Testing our recursive ancestor rule
+  ;; Pull queries; These let us pull out information about a particular entity, by id.
 
-(pp/pprint
-  (d/q
-    '[:find ?n1 ?n2
-      :in $ %
-      :where (ancestor ?e1 ?e2)
-             [?e1 :person/name ?n1]
-             [?e2 :person/name ?n2]]
-    @conn
-    rules))
-    ;; Either a parent
+  (d/pull @conn '[*] 1)
 
-;; Testing a recursive rule for our odum flows
-
-(pp/pprint
-  (d/q
-    '[:find ?n1 ?n2
-      :in $ %
-      :where (flows-to ?e1 ?e2)
-             [?e1 :db/doc ?n1]
-             [?e2 :db/doc ?n2]]
-    @conn
-    rules))
+  (pp/pprint
+    (d/pull @conn '[*] 4))
 
 
-(pp/pprint
-  (d/q
-    '[:find ?n1 ?n2
-      :in $ % ?from-what
-      :where (flows-to ?from-what ?e2)
-             [?from-what :db/doc ?n1]
-             [?e2 :db/doc ?n2]]
-    @conn
-    rules
-    1))
+  ;; Datalog queries with q; These let you query across relationships and do SQL style queries, but more
+  ;; powerful, easier to write, and with recursion.
+
+  (pp/pprint
+    (d/q
+      '[:find [?e ...]
+        :where [?e :e/type :odum/flow]
+               [?e :odum.flow/from ?p]
+               [?p :db/doc "Some prey"]]
+      @conn))
 
 
-;; Simple example of how iterate works, and how we can use that for computing our simulation.
+  ;; Here's some person and ancestor data we can play with
+
+  (def ancestral-data
+    [{:db/id -999
+      :person/name "Bob Jones"}
+     {:db/id -998
+      :person/name "Sally Mae"
+      :person/parent -999}
+     {:db/id -997
+      :person/name "Freddie Mac"
+      :person/parent -998}
+     {:db/id -996
+      :person/name "Jill Stein"
+      :person/parent -998}
+     {:db/id -995
+      :person/name "Bo Willson"
+      :person/parent -996}])
 
 
-(defn grow
-  [x]
-  (update x :age inc))
+  (d/transact conn ancestral-data)
 
-(grow {:name "calvin" :age 2}) 
+  ;; let's see all parent relationships by name
 
-(take
-  10
-  (iterate grow {:age 3 :name "Jo"}))
+  (pp/pprint
+    (d/q
+      '[:find ?n1 ?n2
+        :in $ %
+        :where [?e1 :person/parent ?e2]
+               [?e1 :person/name ?n1]
+               [?e2 :person/name ?n2]]
+      @conn))
+
+  ;; Now we're going to define some rules; These let us describe "or", and do recursion.
+
+  (def rules
+    '[;; Ancestor
+      [(ancestor ?e1 ?e2)
+       [?e1 :person/parent ?e2]]
+       ;; Or an ancestor of a parent
+      [(ancestor ?e1 ?e2)
+       [?e1 :person/parent ?p]
+       [ancestor ?p ?e2]]
+      ;; Odum flows
+      [(flows-to ?e1 ?e2)
+       [?f :odum.flow/from ?e1]
+       [?f :odum.flow/to ?e2]]
+      [(flows-to ?e1 ?e2)
+       [?f :odum.flow/from ?e1]
+       [?f :odum.flow/to ?n]
+       (flows-to ?n ?e2)]])
 
 
-(pp/pprint
-  (d/q
-    '[:find ?n1 ?n2
-      :in $ % ?from-what
-      :where (flows-to ?from-what ?e2)
-             [?from-what :db/doc ?n1]
-             [?e2 :db/doc ?n2]]
-    @conn
-    rules
-    1))
+  ;; Testing our recursive ancestor rule
+
+  (pp/pprint
+    (d/q
+      '[:find ?n1 ?n2
+        :in $ %
+        :where (ancestor ?e1 ?e2)
+               [?e1 :person/name ?n1]
+               [?e2 :person/name ?n2]]
+      @conn
+      rules))
+      ;; Either a parent
+
+  ;; Testing a recursive rule for our odum flows
+
+  (pp/pprint
+    (d/q
+      '[:find ?n1 ?n2
+        :in $ %
+        :where (flows-to ?e1 ?e2)
+               [?e1 :db/doc ?n1]
+               [?e2 :db/doc ?n2]]
+      @conn
+      rules))
 
 
-(defn odum-tick
-  [{:as state :keys [nodes flows]}]
-  (update))
-  
+  (pp/pprint
+    (d/q
+      '[:find ?n1 ?n2
+        :in $ % ?from-what
+        :where (flows-to ?from-what ?e2)
+               [?from-what :db/doc ?n1]
+               [?e2 :db/doc ?n2]]
+      @conn
+      rules
+      1))
+
+
+  ;; Simple example of how iterate works, and how we can use that for computing our simulation.
+
+
+  (defn grow
+    [x]
+    (update x :age inc))
+
+  (grow {:name "calvin" :age 2}) 
+
+  (take
+    10
+    (iterate grow {:age 3 :name "Jo"}))
+
+
+  (pp/pprint
+    (d/q
+      '[:find ?n1 ?n2
+        :in $ % ?from-what
+        :where (flows-to ?from-what ?e2)
+               [?from-what :db/doc ?n1]
+               [?e2 :db/doc ?n2]]
+      @conn
+      rules
+      1))
+
+
+  (defn odum-tick
+    [{:as state :keys [nodes flows]}]
+    (update)))
+    
 
 
